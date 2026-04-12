@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChatSQL — Natural Language Database Interface</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0c0f;
+      --bg-panel: #10131a;
+      --bg-card: #161b26;
+      --bg-input: #1c2232;
+      --border: #252d3d;
+      --border-bright: #2e3a52;
+      --accent: #00e5a0;
+      --accent-dim: #00e5a020;
+      --accent-glow: #00e5a040;
+      --accent2: #4d7cfe;
+      --accent2-dim: #4d7cfe18;
+      --warn: #ff6b6b;
+      --text: #e8edf5;
+      --text-muted: #6b7a99;
+      --text-dim: #3d4d6a;
+      --mono: 'Space Mono', monospace;
+      --display: 'Syne', sans-serif;
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--display);
+      overflow: hidden;
+    }
+
+    /* LAYOUT */
+    .app {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      grid-template-rows: 56px 1fr;
+      height: 100vh;
+    }
+
+    /* TOPBAR */
+    .topbar {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-panel);
+      z-index: 10;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .logo span { color: var(--accent); }
+
+    .topbar-right { display: flex; align-items: center; gap: 16px; }
+
+    .conn-badge {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 14px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      font-size: 12px; font-family: var(--mono);
+      color: var(--text-muted);
+      background: var(--bg-card);
+      transition: all 0.2s;
+    }
+    .conn-badge.connected { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+    .conn-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      transition: background 0.3s;
+    }
+    .conn-badge.connected .conn-dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+    .btn-connect {
+      padding: 8px 18px; font-family: var(--display); font-weight: 700;
+      font-size: 13px; background: var(--accent); color: #000;
+      border: none; border-radius: var(--radius-sm); cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-connect:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+    /* SIDEBAR */
+    .sidebar {
+      border-right: 1px solid var(--border);
+      background: var(--bg-panel);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-section {
+      border-bottom: 1px solid var(--border);
+      padding: 16px;
+    }
+
+    .sidebar-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--text-dim); margin-bottom: 12px;
+    }
+
+    .tables-list { flex: 1; overflow-y: auto; padding: 12px 0; }
+    .tables-list::-webkit-scrollbar { width: 4px; }
+    .tables-list::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+    .table-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 16px; cursor: pointer;
+      transition: background 0.1s; font-size: 13px;
+      color: var(--text-muted); border-left: 3px solid transparent;
+    }
+    .table-item:hover { background: var(--bg-card); color: var(--text); }
+    .table-item.active {
+      background: var(--accent-dim); color: var(--accent);
+      border-left-color: var(--accent);
+    }
+    .table-icon { font-size: 14px; opacity: 0.7; }
+
+    .empty-tables {
+      padding: 24px 16px; text-align: center;
+      color: var(--text-dim); font-size: 12px; line-height: 1.8;
+    }
+
+    /* MAIN */
+    .main {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    /* RESULTS AREA */
+    .results-area {
+      overflow-y: auto; padding: 24px;
+      display: flex; flex-direction: column; gap: 20px;
+    }
+    .results-area::-webkit-scrollbar { width: 4px; }
+    .results-area::-webkit-scrollbar-thumb { background: var(--border-bright); }
+
+    /* WELCOME */
+    .welcome {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      height: 100%; gap: 16px; text-align: center;
+      color: var(--text-muted); padding: 40px;
+    }
+    .welcome h2 {
+      font-size: 28px; font-weight: 800; color: var(--text);
+      letter-spacing: -1px;
+    }
+    .welcome p { font-size: 14px; max-width: 400px; line-height: 1.7; }
+    .welcome-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; }
+    .chip {
+      padding: 8px 16px; border: 1px solid var(--border-bright);
+      border-radius: 100px; font-size: 12px; color: var(--text-muted);
+      cursor: pointer; font-family: var(--mono); transition: all 0.15s;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+    /* QUERY CARD */
+    .query-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      animation: slideIn 0.25s ease; flex-shrink: 0;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .query-header {
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 12px;
+    }
+    .query-text {
+      font-size: 14px; color: var(--text); font-weight: 600; line-height: 1.5;
+    }
+    .query-time { font-size: 11px; color: var(--text-dim); font-family: var(--mono); white-space: nowrap; }
+
+    .sql-block {
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      background: #0d1117;
+    }
+    .sql-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--accent2); margin-bottom: 8px; }
+    .sql-code {
+      font-family: var(--mono); font-size: 12px; color: #a8c4ff;
+      white-space: pre-wrap; word-break: break-word; line-height: 1.7;
+    }
+
+    /* DATA TABLE */
+    .data-table-wrap { overflow-x: auto; overflow-y: auto; max-height: 360px; padding: 0 0 4px 0; border-radius: 0 0 var(--radius) var(--radius); }
+    .data-table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+      font-family: var(--mono);
+    }
+    .data-table th {
+      text-align: left; padding: 11px 16px; font-size: 11px;
+      font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+      color: #a0b0cc; border-bottom: 2px solid var(--border-bright);
+      white-space: nowrap; background: #1a2030; position: sticky; top: 0;
+    }
+    .data-table td {
+      padding: 11px 16px; border-bottom: 1px solid #1e2840;
+      color: #e2e8f4; vertical-align: middle; max-width: 300px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .data-table tbody tr:nth-child(even) td { background: #131929; }
+    .data-table tbody tr:nth-child(odd) td { background: #0f1520; }
+    .data-table tbody tr:hover td { background: #1e2d45; color: #fff; }
+    .data-table tr:last-child td { border-bottom: none; }
+
+    .row-count { padding: 12px 18px; font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+
+    /* ERROR */
+    .error-card {
+      background: #1a0f0f; border: 1px solid #3d1515;
+      border-radius: var(--radius); padding: 16px 20px;
+      color: var(--warn); font-family: var(--mono); font-size: 13px;
+      animation: slideIn 0.25s ease;
+    }
+
+    /* PROFILE CARD */
+    .profile-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      animation: slideIn 0.25s ease;
+    }
+    .profile-header {
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .profile-title { font-size: 14px; font-weight: 700; }
+    .profile-badge {
+      font-size: 10px; padding: 4px 10px; border-radius: 100px;
+      background: var(--accent2-dim); color: var(--accent2);
+      border: 1px solid var(--accent2); font-family: var(--mono);
+    }
+    .profile-cols { padding: 12px 18px; display: flex; flex-direction: column; gap: 8px; }
+    .profile-col {
+      display: grid; grid-template-columns: 180px 110px 1fr;
+      align-items: center; gap: 12px; padding: 12px 14px;
+      background: #111827; border: 1px solid #1e2d45;
+      border-radius: var(--radius-sm); font-family: var(--mono); font-size: 12px;
+    }
+    .col-name { color: #e2e8f4; font-weight: 700; font-size: 13px; }
+    .col-type { color: #60a5fa; font-size: 11px; }
+    .col-stats { display: flex; gap: 14px; color: #94a3b8; font-size: 11px; flex-wrap: wrap; }
+    .col-stats .sv { color: #34d399; font-weight: 700; }
+    .stat-item span { color: var(--accent); }
+
+    /* QUERY INPUT BAR */
+    .query-bar {
+      border-top: 1px solid var(--border);
+      background: var(--bg-panel); padding: 16px 24px;
+      display: flex; gap: 12px; align-items: flex-end;
+    }
+
+    .input-wrap { flex: 1; position: relative; }
+    .query-input {
+      width: 100%; background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 16px; padding-right: 50px;
+      font-family: var(--display); font-size: 14px; color: var(--text);
+      outline: none; resize: none; min-height: 52px; max-height: 140px;
+      line-height: 1.5; transition: border-color 0.15s;
+    }
+    .query-input:focus { border-color: var(--accent); }
+    .query-input::placeholder { color: var(--text-dim); }
+
+    .btn-submit {
+      width: 44px; height: 44px; background: var(--accent); border: none;
+      border-radius: var(--radius-sm); cursor: pointer; display: flex;
+      align-items: center; justify-content: center; font-size: 18px;
+      transition: all 0.15s; flex-shrink: 0;
+    }
+    .btn-submit:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    .bar-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .btn-secondary {
+      padding: 10px 16px; background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-muted);
+      font-family: var(--display); font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .btn-secondary:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    /* MODAL */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: #000000cc; backdrop-filter: blur(4px);
+      z-index: 100; align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--bg-panel); border: 1px solid var(--border-bright);
+      border-radius: 16px; width: 480px; max-width: 95vw;
+      box-shadow: 0 24px 80px #000a;
+      animation: modalIn 0.2s ease;
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.96) translateY(-10px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .modal-header {
+      padding: 20px 24px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .modal-title { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+    .modal-close {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px;
+    }
+    .modal-close:hover { background: var(--bg-card); color: var(--text); }
+
+    .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--text-muted); text-transform: uppercase; }
+    .form-input {
+      background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 11px 14px;
+      font-family: var(--mono); font-size: 13px; color: var(--text);
+      outline: none; transition: border-color 0.15s;
+    }
+    .form-input:focus { border-color: var(--accent); }
+    .form-input::placeholder { color: var(--text-dim); }
+
+    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
+
+    .btn-primary {
+      padding: 11px 24px; background: var(--accent); color: #000;
+      font-family: var(--display); font-weight: 700; font-size: 14px;
+      border: none; border-radius: var(--radius-sm); cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-ghost {
+      padding: 11px 20px; background: none; color: var(--text-muted);
+      font-family: var(--display); font-weight: 600; font-size: 14px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;
+    }
+    .btn-ghost:hover { border-color: var(--border-bright); color: var(--text); }
+
+    .msg { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; font-family: var(--mono); }
+    .msg.error { background: #1a0f0f; border: 1px solid #3d1515; color: var(--warn); }
+    .msg.success { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); }
+
+    /* LOADING */
+    .loader {
+      display: flex; align-items: center; gap: 12px;
+      padding: 20px; background: var(--bg-card);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text-muted); font-size: 13px;
+    }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border-bright);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* SCROLLBAR */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+
+    /* TABS */
+    .tabs { display: flex; gap: 4px; padding: 0 18px; border-bottom: 1px solid var(--border); }
+    .tab {
+      padding: 10px 16px; font-size: 12px; font-weight: 700;
+      color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent;
+      margin-bottom: -1px; transition: all 0.15s;
+    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab:hover { color: var(--text); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      Chat<span>SQL</span>
+    </div>
+    <div class="topbar-right">
+      <div class="conn-badge" id="connBadge">
+        <div class="conn-dot"></div>
+        <span id="connText">Not connected</span>
+      </div>
+      <button class="btn-connect" onclick="openModal()">Connect DB</button>
+    </div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Database</div>
+      <div id="dbName" style="font-size:13px; color:var(--text-muted); font-family:var(--mono);">—</div>
+    </div>
+
+    <div class="sidebar-section" style="padding-bottom:4px;">
+      <div class="sidebar-label">Tables</div>
+    </div>
+
+    <div class="tables-list" id="tablesList">
+      <div class="empty-tables">Connect a database<br>to see tables here</div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- RESULTS -->
+    <div class="results-area" id="resultsArea">
+      <div class="welcome" id="welcome">
+        <div style="font-size:48px;">⚡</div>
+        <h2>Ask anything about your data</h2>
+        <p>Connect your MySQL database, then type a question in plain English. ChatSQL generates and runs the SQL automatically.</p>
+        <div class="welcome-chips">
+          <div class="chip" onclick="useChip(this)">Show me all customers</div>
+          <div class="chip" onclick="useChip(this)">Top 10 orders by value</div>
+          <div class="chip" onclick="useChip(this)">Count rows per table</div>
+          <div class="chip" onclick="useChip(this)">Show recent transactions</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- QUERY BAR -->
+    <div class="query-bar">
+      <div class="input-wrap">
+        <textarea
+          id="queryInput"
+          class="query-input"
+          placeholder="Ask a question about your data... (Enter to send)"
+          rows="1"
+          onkeydown="handleKey(event)"
+          oninput="autoResize(this)"
+        ></textarea>
+      </div>
+      <div class="bar-actions">
+        <button class="btn-secondary" onclick="profileSelected()" id="profileBtn">Profile Table</button>
+        <button class="btn-submit" id="submitBtn" onclick="submitQuery()" title="Run query">▶</button>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<!-- CONNECT MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Connect Database</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="modalMsg" style="display:none;"></div>
+      <div class="form-group">
+        <div class="form-label">Host</div>
+        <input class="form-input" id="dbHost" type="text" placeholder="localhost" value="localhost" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <div class="form-label">Port</div>
+          <input class="form-input" id="dbPort" type="number" placeholder="3306" value="3306" />
+        </div>
+        <div class="form-group">
+          <div class="form-label">Database</div>
+          <input class="form-input" id="dbDatabase" type="text" placeholder="my_database" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <div class="form-label">Username</div>
+          <input class="form-input" id="dbUser" type="text" placeholder="root" />
+        </div>
+        <div class="form-group">
+          <div class="form-label">Password</div>
+          <input class="form-input" id="dbPass" type="password" placeholder="••••••••" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" id="connectBtn" onclick="connectDB()">Connect</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = 'http://localhost:8000';
+  let selectedTable = null;
+  let isConnected = false;
+
+  // =========================================================
+  // MODAL
+  // =========================================================
+  function openModal() { document.getElementById('modal').classList.add('open'); }
+  function closeModal() {
+    document.getElementById('modal').classList.remove('open');
+    document.getElementById('modalMsg').style.display = 'none';
+  }
+
+  // =========================================================
+  // CONNECT DB
+  // =========================================================
+  async function connectDB() {
+    const btn = document.getElementById('connectBtn');
+    const msgEl = document.getElementById('modalMsg');
+
+    const body = {
+      host:     document.getElementById('dbHost').value.trim(),
+      port:     parseInt(document.getElementById('dbPort').value) || 3306,
+      database: document.getElementById('dbDatabase').value.trim(),
+      user:     document.getElementById('dbUser').value.trim(),
+      password: document.getElementById('dbPass').value
+    };
+
+    if (!body.host || !body.database || !body.user) {
+      showModalMsg('Please fill host, database and username.', 'error');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Connecting…';
+    msgEl.style.display = 'none';
+
+    try {
+      const res = await fetch(`${API}/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.detail || 'Connection failed');
+
+      // Success
+      isConnected = true;
+      setConnected(body.database, body.host);
+      showModalMsg(data.message, 'success');
+      await loadTables();
+      setTimeout(closeModal, 1200);
+
+    } catch (err) {
+      showModalMsg(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Connect';
+    }
+  }
+
+  function showModalMsg(msg, type) {
+    const el = document.getElementById('modalMsg');
+    el.className = `msg ${type}`;
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  function setConnected(dbName, host) {
+    const badge = document.getElementById('connBadge');
+    const text  = document.getElementById('connText');
+    badge.classList.add('connected');
+    text.textContent = `${dbName} @ ${host}`;
+    document.getElementById('dbName').textContent = dbName;
+    document.getElementById('dbName').style.color = 'var(--accent)';
+  }
+
+  // =========================================================
+  // TABLES
+  // =========================================================
+  async function loadTables() {
+    try {
+      const res  = await fetch(`${API}/tables`);
+      const data = await res.json();
+      renderTables(data.tables || []);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function renderTables(tables) {
+    const el = document.getElementById('tablesList');
+    if (!tables.length) {
+      el.innerHTML = '<div class="empty-tables">No tables found</div>';
+      return;
+    }
+    el.innerHTML = tables.map(t => `
+      <div class="table-item" onclick="selectTable('${t}')" id="tbl-${t}">
+        <span class="table-icon">⬡</span>
+        <span>${t}</span>
+      </div>
+    `).join('');
+  }
+
+  function selectTable(name) {
+    document.querySelectorAll('.table-item').forEach(el => el.classList.remove('active'));
+    document.getElementById(`tbl-${name}`)?.classList.add('active');
+    selectedTable = name;
+    document.getElementById('queryInput').placeholder = `Ask about "${name}"…`;
+  }
+
+  // =========================================================
+  // QUERY
+  // =========================================================
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submitQuery();
+    }
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+  }
+
+  function useChip(el) {
+    document.getElementById('queryInput').value = el.textContent;
+    submitQuery();
+  }
+
+  async function submitQuery() {
+    const input = document.getElementById('queryInput');
+    const query = input.value.trim();
+    if (!query) return;
+
+    if (!isConnected) { openModal(); return; }
+
+    // Detect "profile <table>" intent from the query bar
+    const profileMatch = query.match(/^(?:profile|describe|analyse|analyze|inspect)\s+(\w+)/i);
+    if (profileMatch) {
+      const tbl = profileMatch[1].toLowerCase();
+      // Try to match against known tables
+      const knownTables = Array.from(document.querySelectorAll('.table-item'))
+        .map(el => el.id.replace('tbl-', ''));
+      const matched = knownTables.find(t => t.toLowerCase() === tbl)
+                   || knownTables.find(t => t.toLowerCase().startsWith(tbl))
+                   || tbl;
+      selectTable(matched);
+      input.value = '';
+      await profileSelected();
+      return;
+    }
+
+    hideWelcome();
+    input.value = '';
+    input.style.height = '';
+
+    const loaderEl = addLoader(`Thinking about: "${query}"`);
+
+    try {
+      const res  = await fetch(`${API}/ask?query=${encodeURIComponent(query)}`);
+      const data = await res.json();
+
+      loaderEl.remove();
+
+      if (!res.ok) {
+        addError(data.detail || 'Something went wrong');
+        return;
+      }
+
+      addQueryResult(query, data.sql, data.data);
+
+    } catch (err) {
+      loaderEl.remove();
+      addError(err.message);
+    }
+  }
+
+  // =========================================================
+  // PROFILE
+  // =========================================================
+  async function profileSelected() {
+    if (!selectedTable) {
+      addError('Select a table from the sidebar first.');
+      return;
+    }
+    if (!isConnected) { openModal(); return; }
+
+    hideWelcome();
+    const loaderEl = addLoader(`Profiling table "${selectedTable}"…`);
+
+    try {
+      const res  = await fetch(`${API}/enrich/${selectedTable}`);
+      const data = await res.json();
+      loaderEl.remove();
+
+      if (!res.ok) {
+        addError(data.detail || 'Profile failed');
+        return;
+      }
+
+      addProfileResult(selectedTable, data);
+    } catch (err) {
+      loaderEl.remove();
+      addError(err.message);
+    }
+  }
+
+  // =========================================================
+  // RENDER HELPERS
+  // =========================================================
+  function hideWelcome() {
+    const w = document.getElementById('welcome');
+    if (w) w.remove();
+  }
+
+  function addLoader(msg) {
+    const el = document.createElement('div');
+    el.className = 'loader';
+    el.innerHTML = `<div class="spinner"></div><span>${msg}</span>`;
+    document.getElementById('resultsArea').appendChild(el);
+    scrollBottom();
+    return el;
+  }
+
+  function addError(msg) {
+    const el = document.createElement('div');
+    el.className = 'error-card';
+    el.textContent = '⚠ ' + msg;
+    document.getElementById('resultsArea').appendChild(el);
+    scrollBottom();
+  }
+
+  function addQueryResult(query, sql, rows) {
+    const now = new Date().toLocaleTimeString();
+    const card = document.createElement('div');
+    card.className = 'query-card';
+
+    const isErr = rows && rows.error;
+    const rowCount = Array.isArray(rows) ? rows.length : 0;
+    const tableHtml = isErr
+      ? `<div style="padding:16px 18px; color:var(--warn); font-family:var(--mono); font-size:13px; border-top:1px solid var(--border);">⚠ ${rows.error}</div>`
+      : renderDataTable(rows);
+
+    card.innerHTML = `
+      <div class="query-header">
+        <div class="query-text">${escHtml(query)}</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          ${!isErr ? `<span style="font-size:11px;padding:3px 10px;border-radius:100px;background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent);font-family:var(--mono);">${rowCount} rows</span>` : ''}
+          <div class="query-time">${now}</div>
+        </div>
+      </div>
+      <div class="sql-block">
+        <div class="sql-label">Generated SQL</div>
+        <div class="sql-code">${escHtml(sql)}</div>
+      </div>
+      ${tableHtml}
+    `;
+
+    document.getElementById('resultsArea').appendChild(card);
+    scrollBottom();
+  }
+
+  function renderDataTable(rows) {
+    if (!Array.isArray(rows) || !rows.length) {
+      return `<div style="padding:20px 18px; color:var(--text-muted); font-size:13px; font-family:var(--mono); border-top:1px solid var(--border);">⚪ Query executed successfully — 0 rows returned.</div>`;
+    }
+    const cols = Object.keys(rows[0]);
+    const thead = `<tr>${cols.map(c => `<th>${escHtml(c)}</th>`).join('')}</tr>`;
+    const tbody = rows.slice(0, 500).map((row, i) =>
+      `<tr>${cols.map(c => {
+        const val = row[c];
+        const display = val === null || val === undefined ? '<span style="color:#3d5070;font-style:italic;">NULL</span>' : escHtml(String(val));
+        const title = val === null ? 'NULL' : escHtml(String(val));
+        return `<td title="${title}">${display}</td>`;
+      }).join('')}</tr>`
+    ).join('');
+    return `<div class="data-table-wrap"><table class="data-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
+  }
+
+  function addProfileResult(tableName, data) {
+    const raw  = data.raw_profile || {};
+    const ai   = data.ai_enrichment || {};
+    const cols = raw.columns || [];
+
+    const card = document.createElement('div');
+    card.className = 'profile-card';
+    card.style.cssText = 'background:#10131a;border:1px solid #252d3d;border-radius:10px;overflow:hidden;animation:slideIn .25s ease;flex-shrink:0;';
+
+    // Header
+    const header = `
+      <div style="padding:14px 18px;border-bottom:1px solid #252d3d;display:flex;align-items:center;justify-content:space-between;background:#0f1520;">
+        <div style="font-size:15px;font-weight:800;color:#e2e8f4;">⬡ &nbsp;${escHtml(tableName)}</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span style="font-size:11px;padding:3px 10px;border-radius:100px;background:#1e3a5f;color:#60a5fa;border:1px solid #2563eb;font-family:var(--mono);">${cols.length} columns</span>
+          <span style="font-size:11px;padding:3px 10px;border-radius:100px;background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent);font-family:var(--mono);">Profile</span>
+        </div>
+      </div>`;
+
+    // AI description
+    const desc = ai.table_description
+      ? `<div style="padding:14px 18px;font-size:13px;color:#94a3b8;line-height:1.8;border-bottom:1px solid #1e2840;background:#0d1117;">${escHtml(ai.table_description)}</div>`
+      : '';
+
+    // AI semantic roles map
+    const roleMap = {};
+    (ai.columns || []).forEach(c => { roleMap[c.name] = c; });
+
+    // Column rows
+    const colsHtml = cols.map(c => {
+      const nullPct = (c.null_percent || 0).toFixed(1);
+      const nullColor = parseFloat(nullPct) > 20 ? '#f87171' : parseFloat(nullPct) > 5 ? '#fbbf24' : '#34d399';
+      const aiCol = roleMap[c.name] || {};
+      const role = aiCol.semantic_role || '';
+      const roleColors = {dimension:'#a78bfa', measure:'#34d399', time:'#60a5fa', id:'#f59e0b'};
+      const roleColor = roleColors[role] || '#6b7a99';
+      const roleTag = role ? `<span style="font-size:10px;padding:2px 8px;border-radius:100px;background:${roleColor}22;color:${roleColor};border:1px solid ${roleColor}55;">${role}</span>` : '';
+      const min  = c.min  !== undefined && c.min  !== null ? `<span>min&nbsp;<span class="sv">${c.min}</span></span>` : '';
+      const max  = c.max  !== undefined && c.max  !== null ? `<span>max&nbsp;<span class="sv">${c.max}</span></span>` : '';
+      const mean = c.mean !== undefined && c.mean !== null ? `<span>avg&nbsp;<span class="sv">${parseFloat(c.mean).toFixed(1)}</span></span>` : '';
+      return `
+        <div class="profile-col">
+          <div class="col-name">${escHtml(c.name)}</div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <span class="col-type">${escHtml(c.type)}</span>
+            ${roleTag}
+          </div>
+          <div class="col-stats">
+            <span>null&nbsp;<span style="color:${nullColor};font-weight:700;">${nullPct}%</span></span>
+            <span>distinct&nbsp;<span class="sv">${c.distinct_count ?? '—'}</span></span>
+            ${min}${max}${mean}
+          </div>
+        </div>`;
+    }).join('');
+
+    // AI join recommendations
+    const joins = (ai.recommended_joins || []).length
+      ? `<div style="padding:14px 18px;border-top:1px solid #1e2840;">
+           <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#60a5fa;margin-bottom:10px;">RECOMMENDED JOINS</div>
+           ${ai.recommended_joins.map(j => `
+             <div style="padding:10px 12px;background:#0d1829;border:1px solid #1e3a5f;border-radius:6px;margin-bottom:6px;font-family:var(--mono);font-size:12px;">
+               <span style="color:#60a5fa;font-weight:700;">JOIN ${escHtml(j.table)}</span>
+               <span style="color:#94a3b8;"> ON ${escHtml(j.on)}</span>
+               <div style="color:#64748b;font-size:11px;margin-top:4px;">${escHtml(j.reason)}</div>
+             </div>`).join('')}
+         </div>`
+      : '';
+
+    // Data quality notes
+    const notes = (ai.data_quality_notes || []).length
+      ? `<div style="padding:14px 18px;border-top:1px solid #1e2840;">
+           <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#fbbf24;margin-bottom:8px;">DATA QUALITY NOTES</div>
+           ${ai.data_quality_notes.map(n => `<div style="font-size:12px;color:#fca5a5;margin-bottom:5px;font-family:var(--mono);">⚠ ${escHtml(n)}</div>`).join('')}
+         </div>`
+      : '';
+
+    card.innerHTML = `${header}${desc}<div class="profile-cols" style="padding:12px 18px;max-height:420px;overflow-y:auto;">${colsHtml}</div>${joins}${notes}`;
+    document.getElementById('resultsArea').appendChild(card);
+    scrollBottom();
+  }
+
+  function scrollBottom() {
+    const area = document.getElementById('resultsArea');
+    setTimeout(() => area.scrollTop = area.scrollHeight, 50);
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // =========================================================
+  // INIT — check if already connected (server restart)
+  // =========================================================
+  (async () => {
+    try {
+      const res  = await fetch(`${API}/connection/status`);
+      const data = await res.json();
+      if (data.connected && data.config) {
+        isConnected = true;
+        setConnected(data.config.database, data.config.host);
+        await loadTables();
+      }
+    } catch (_) {}
+  })();
+</script>
+</body>
+</html>
