@@ -35,21 +35,49 @@ app.include_router(mcp_router)
 
 
 # ──────────────────────────────────────────────────────────────
-# SESSION HELPER
+# SESSION HELPERS
 # ──────────────────────────────────────────────────────────────
 SESSION_COOKIE = "chatsql_session"
+SESSION_HEADER = "X-Session-ID"
+
+
+def _extract_session(request: Request) -> Optional[str]:
+    """Read session ID from header first, then cookie fallback.
+    Header takes priority because cookies are unreliable behind
+    reverse proxies (Railway, Render, Heroku)."""
+    return (
+        request.headers.get(SESSION_HEADER)
+        or request.cookies.get(SESSION_COOKIE)
+        or None
+    )
+
 
 def get_or_create_session(request: Request, response: Response) -> str:
-    """Return existing session id from cookie, or mint a new one."""
-    session_id = request.cookies.get(SESSION_COOKIE)
+    """Used ONLY on /connect. Returns existing or new session ID,
+    and sets cookie with correct flags for proxy/HTTPS deployments."""
+    session_id = _extract_session(request)
     if not session_id:
         session_id = str(uuid4())
-        response.set_cookie(
-            SESSION_COOKIE,
-            session_id,
-            max_age=86400 * 7,   # 7 days
-            httponly=True,
-            samesite="lax",
+    # Refresh cookie — httponly=False so JS can read it as fallback
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_id,
+        max_age=86400 * 7,
+        httponly=False,
+        samesite="none",
+        secure=True,
+    )
+    return session_id
+
+
+def require_session(request: Request) -> str:
+    """Used on ALL data endpoints. Reads header first, then cookie.
+    Raises 401 if neither present."""
+    session_id = _extract_session(request)
+    if not session_id:
+        raise HTTPException(
+            status_code=401,
+            detail="No session found. Please connect to a database first.",
         )
     return session_id
 
@@ -109,8 +137,10 @@ def disconnect(request: Request, response: Response):
 # /connection/status
 # ──────────────────────────────────────────────────────────────
 @app.get("/connection/status")
-def connection_status(request: Request, response: Response):
-    session_id = get_or_create_session(request, response)
+def connection_status(request: Request):
+    session_id = _extract_session(request)
+    if not session_id:
+        return {"connected": False, "config": None}
     cfg = get_config(session_id)
     if cfg is None:
         return {"connected": False, "config": None}
@@ -121,8 +151,8 @@ def connection_status(request: Request, response: Response):
 # /tables
 # ──────────────────────────────────────────────────────────────
 @app.get("/tables")
-def list_tables(request: Request, response: Response):
-    session_id = get_or_create_session(request, response)
+def list_tables(request: Request):
+    session_id = require_session(request)
     try:
         conn = get_connection(session_id)
         cursor = conn.cursor()
@@ -147,7 +177,7 @@ def _clean(v):
 
 @app.get("/tables/{table_name}/preview")
 def preview_table(table_name: str, request: Request, response: Response, limit: int = 10):
-    session_id = get_or_create_session(request, response)
+    session_id = require_session(request)
     try:
         conn = get_connection(session_id)
         df = pd.read_sql(f"SELECT * FROM `{table_name}` LIMIT {limit}", conn)
@@ -166,7 +196,7 @@ def preview_table(table_name: str, request: Request, response: Response, limit: 
 # ──────────────────────────────────────────────────────────────
 @app.get("/tables/{table_name}/schema")
 def table_schema(table_name: str, request: Request, response: Response):
-    session_id = get_or_create_session(request, response)
+    session_id = require_session(request)
     try:
         conn = get_connection(session_id)
         cursor = conn.cursor()
@@ -188,7 +218,7 @@ def table_schema(table_name: str, request: Request, response: Response):
 # ──────────────────────────────────────────────────────────────
 @app.get("/enrich/{table_name}")
 def enrich_table(table_name: str, request: Request, response: Response, domain: str = "general"):
-    session_id = get_or_create_session(request, response)
+    session_id = require_session(request)
     try:
         raw_profile = profile_table(table_name, session_id)
         columns = [ColumnStats(**col) for col in raw_profile["columns"]]
@@ -209,7 +239,7 @@ def enrich_table(table_name: str, request: Request, response: Response, domain: 
 # ──────────────────────────────────────────────────────────────
 @app.post("/profiles")
 def create_profile(data: dict, request: Request, response: Response):
-    session_id = get_or_create_session(request, response)
+    session_id = require_session(request)
     table_name = data.get("table_name")
     if not table_name:
         raise HTTPException(status_code=400, detail="table_name required")
@@ -264,7 +294,7 @@ def list_profiles(tenant_id: str = None):
 # ──────────────────────────────────────────────────────────────
 @app.get("/ask")
 def ask(query: str, request: Request, response: Response):
-    session_id = get_or_create_session(request, response)
+    session_id = require_session(request)
     try:
         sql = generate_sql(query, session_id)
         data = execute_sql(sql, session_id)

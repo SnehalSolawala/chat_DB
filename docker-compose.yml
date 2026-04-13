@@ -7,11 +7,16 @@ services:
     container_name: chatsql_app
     restart: unless-stopped
     ports:
-      - "8000:8000"          # Change left side to expose on a different host port, e.g. "80:8000"
+      - "8000:8000"
     env_file:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
+    # ── Single worker is REQUIRED ────────────────────────────────
+    # Session configs are stored in-process memory (Python dict).
+    # Multiple workers = multiple separate dicts = random
+    # "No database connected" errors when requests hit different workers.
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

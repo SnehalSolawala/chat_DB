@@ -18,5 +18,7 @@ COPY . .
 
 EXPOSE 8000
 
-# Run with multiple workers so concurrent users don't block each other
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# Single worker — session configs are stored in-process memory (dict).
+# Multiple workers would each have their own empty dict, causing
+# "No database connected" errors when requests land on different workers.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

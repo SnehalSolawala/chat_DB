@@ -525,10 +525,36 @@
 </div>
 
 <script>
-  //const API = 'http://localhost:8000';
   const API = '';
+  const SESSION_KEY = 'chatsql_session_id';  // sessionStorage key — cleared when tab/browser closes
   let selectedTable = null;
   let isConnected = false;
+
+  // =========================================================
+  // SESSION HELPERS — store ID in sessionStorage, send as header
+  // sessionStorage clears automatically when the tab/browser is closed.
+  // New tab = no session ID = frontend shows reconnect modal cleanly.
+  // Reliable across proxies and HTTPS unlike cookies.
+  // =========================================================
+  function getSessionId() {
+    return sessionStorage.getItem(SESSION_KEY);
+  }
+
+  function setSessionId(id) {
+    if (id) sessionStorage.setItem(SESSION_KEY, id);
+  }
+
+  function clearSessionId() {
+    sessionStorage.removeItem(SESSION_KEY);
+  }
+
+  // Wrapper: always inject X-Session-ID header on every fetch
+  function apiFetch(url, options = {}) {
+    const sid = getSessionId();
+    const headers = { ...(options.headers || {}) };
+    if (sid) headers['X-Session-ID'] = sid;
+    return fetch(url, { ...options, headers, credentials: 'include' });
+  }
 
   // =========================================================
   // MODAL
@@ -564,7 +590,7 @@
     msgEl.style.display = 'none';
 
     try {
-      const res = await fetch(`${API}/connect`, {
+      const res = await apiFetch(`${API}/connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -572,6 +598,9 @@
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.detail || 'Connection failed');
+
+      // Save session ID to sessionStorage — cleared automatically on tab/browser close
+      if (data.session_id) setSessionId(data.session_id);
 
       // Success
       isConnected = true;
@@ -605,11 +634,27 @@
   }
 
   // =========================================================
+  // SESSION EXPIRED HANDLER
+  // =========================================================
+  function handleSessionExpired() {
+    isConnected = false;
+    clearSessionId();  // wipe stale session from sessionStorage
+    const badge = document.getElementById('connBadge');
+    badge.classList.remove('connected');
+    document.getElementById('connText').textContent = 'Not connected';
+    document.getElementById('tablesList').innerHTML =
+      '<div class="empty-tables">Session expired.<br/>Please reconnect.</div>';
+    addError('Session expired — please reconnect to your database.');
+    openModal();
+  }
+
+  // =========================================================
   // TABLES
   // =========================================================
   async function loadTables() {
     try {
-      const res  = await fetch(`${API}/tables`);
+        const res = await apiFetch(`${API}/tables`);
+        if (res.status === 401) { handleSessionExpired(); return; }
       const data = await res.json();
       renderTables(data.tables || []);
     } catch (e) {
@@ -688,10 +733,15 @@
     const loaderEl = addLoader(`Thinking about: "${query}"`);
 
     try {
-      const res  = await fetch(`${API}/ask?query=${encodeURIComponent(query)}`);
+        const res = await apiFetch(`${API}/ask?query=${encodeURIComponent(query)}`);
       const data = await res.json();
 
       loaderEl.remove();
+
+      if (res.status === 401) {
+        handleSessionExpired();
+        return;
+      }
 
       if (!res.ok) {
         addError(data.detail || 'Something went wrong');
@@ -720,9 +770,14 @@
     const loaderEl = addLoader(`Profiling table "${selectedTable}"…`);
 
     try {
-      const res  = await fetch(`${API}/enrich/${selectedTable}`);
+        const res = await apiFetch(`${API}/enrich/${selectedTable}`);
       const data = await res.json();
       loaderEl.remove();
+
+      if (res.status === 401) {
+        handleSessionExpired();
+        return;
+      }
 
       if (!res.ok) {
         addError(data.detail || 'Profile failed');
@@ -903,18 +958,30 @@
   }
 
   // =========================================================
-  // INIT — check if already connected (server restart)
+  // INIT — restore session on page refresh
+  // Uses sessionStorage session ID — clears on tab close, works behind Railway/proxies
   // =========================================================
   (async () => {
     try {
-      const res  = await fetch(`${API}/connection/status`);
+      if (!getSessionId()) {
+        // No session in this tab — new tab or browser was closed.
+        // Show connect modal automatically so user knows to reconnect.
+        openModal();
+        return;
+      }
+      const res = await apiFetch(`${API}/connection/status`);
+      if (!res.ok) { openModal(); return; }
       const data = await res.json();
       if (data.connected && data.config) {
         isConnected = true;
         setConnected(data.config.database, data.config.host);
         await loadTables();
+      } else {
+        // Session ID exists in tab but server lost it (e.g. container restart)
+        clearSessionId();
+        openModal();
       }
-    } catch (_) {}
+    } catch (_) { openModal(); }
   })();
 </script>
 </body>

@@ -1,19 +1,56 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 from typing import Dict, Any, List
+from uuid import uuid4
 
 router = APIRouter()
 
 # ✅ SINGLE SHARED STORE (LIST)
 PROFILE_STORE: List[Dict[str, Any]] = []
 
+# Session cookie name — must match main.py
+SESSION_COOKIE = "chatsql_session"
+SESSION_HEADER = "X-Session-ID"
+
 
 # =========================================================
 # MCP TOOL: profile_table
 # =========================================================
 @router.post("/mcp/tools/profile_table")
-def mcp_profile_table(data: dict):
-    from main import create_profile
-    return create_profile(data)
+def mcp_profile_table(data: dict, request: Request):
+    """Standalone — does NOT import from main.py to avoid circular deps."""
+    from profiler import profile_table
+    from db import get_config
+
+    session_id = request.headers.get(SESSION_HEADER) or request.cookies.get(SESSION_COOKIE)
+    if not session_id:
+        raise HTTPException(status_code=401, detail="No session cookie. Please connect first.")
+
+    table_name = data.get("table_name")
+    if not table_name:
+        raise HTTPException(status_code=400, detail="table_name required")
+
+    data_source_ref = data.get("data_source_ref", "default")
+
+    # Return existing profile if already computed
+    for profile in PROFILE_STORE:
+        if (profile.get("table_name") == table_name
+                and profile.get("data_source_ref") == data_source_ref):
+            return {"request_id": profile["request_id"]}
+
+    try:
+        raw_profile = profile_table(table_name, session_id)
+    except ConnectionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    request_id = str(uuid4())
+    PROFILE_STORE.append({
+        "request_id": request_id,
+        "table_name": table_name,
+        "data_source_ref": data_source_ref,
+        "mode": data.get("mode", "full"),
+        "profile": raw_profile,
+    })
+    return {"request_id": request_id}
 
 
 # =========================================================
@@ -21,8 +58,10 @@ def mcp_profile_table(data: dict):
 # =========================================================
 @router.get("/mcp/tools/get_profile")
 def mcp_get_profile(request_id: str):
-    from main import get_profile
-    return get_profile(request_id)
+    for profile in PROFILE_STORE:
+        if profile["request_id"] == request_id:
+            return profile
+    raise HTTPException(status_code=404, detail="Profile not found")
 
 
 # =========================================================
