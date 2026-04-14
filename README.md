@@ -19,3 +19,33 @@ Database: MySQL, schema profiling, SQL generation
 DevOps: Docker, docker-compose, Railway, DockerHub
 Frontend: Vanilla JS, async/await, sessionStorage, fetch API
 
+📌 Overview
+
+ChatSQL is an AI-powered web application that allows users to interact with databases using natural language instead of SQL queries.
+
+It leverages LLMs (GPT-4o-mini) to convert plain English questions into executable MySQL queries, making data access simple, fast, and accessible to non-technical users.
+
+✨ Key Features
+💬 Natural Language to SQL (NL-to-SQL)
+Ask questions in plain English and get accurate SQL queries + results instantly.
+🧠 AI Table Profiler
+Automatically analyzes database schema:
+Detects data quality issues
+Identifies column roles (dimension, measure, time, ID)
+Suggests JOIN relationships
+🔐 Session-Based Multi-User Architecture
+Each user connects to their own MySQL database
+Supports concurrent users
+Secure per-session database credentials
+🍪 Cookie-Free Session Handling
+Uses X-Session-ID headers
+Stores session in sessionStorage
+Works reliably behind reverse proxies (Railway/Heroku)
+⚡ FastAPI Backend with REST APIs
+Clean and scalable API design
+MCP-compatible endpoints for:
+Schema discovery
+Table profiling
+🐳 Dockerized Deployment
+Containerized using Docker
+CI/CD via DockerHub
