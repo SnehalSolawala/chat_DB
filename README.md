@@ -7,16 +7,14 @@
 ### for example you can check with my database which i can store on railway
 
   host="metro.proxy.rlwy.net",
+  
   port=49330,
+  
   user="root",
+  
   password="pBvzCPWbFLgPNopSSfOFrnZZmNpFdrlr",
+  
   database="railway"
-
-
-
-
-
-
 
 
 
