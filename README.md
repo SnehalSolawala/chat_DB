@@ -17,6 +17,8 @@
   database="railway"
 
 
+### if you want to run on your local database then you can take my docker image from https://hub.docker.com/repository/docker/snehalsolawala/chatsql then run on it
+
 
 
 ChatSQL — Natural Language Database Interface
