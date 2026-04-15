@@ -1,6 +1,23 @@
 # 🚀 ChatSQL — Natural Language Database Interface
 
-🔗 **Live Demo:** https://chatsql-latest.onrender.com  
+## 🔗 **Live Demo:** https://chatsql-latest.onrender.com  
+
+###you can run on your database which is on server
+###for example you can check with my database which i can store on railway
+  host="metro.proxy.rlwy.net",
+  port=49330,
+  user="root",
+  password="pBvzCPWbFLgPNopSSfOFrnZZmNpFdrlr",
+  database="railway"
+
+
+
+
+
+
+
+
+
 
 ChatSQL — Natural Language Database Interface
 Python FastAPI MySQL OpenAI GPT-4 Docker Railway
