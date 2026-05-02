@@ -83,3 +83,30 @@ It leverages OpenAI GPT-4o-mini to convert plain English questions into executab
   - Deployed on Railway  
 
 ---
+
+
+##What was hard to build?
+
+Honestly, two things frustrated me more than I expected.
+The first one was the session problem.
+So I was testing the app locally and everything worked perfectly. Connect to the database, ask a question, get results. No issues.
+Then I deployed it and randomly — not always, but randomly — users were getting this error saying 'no database connected' even though they just connected two seconds ago.
+I couldn't reproduce it locally. It took me a while to figure out what was happening.
+The issue was I was running two uvicorn workers in production. Each worker is a separate Python process — separate memory. So when a user hits /connect, that request goes to worker one, credentials get stored in worker one's dictionary. Then when they hit /ask, that request goes to worker two — completely different memory — worker two has no idea who this user is.
+Once I understood that, the fix was simple — force single worker in Docker. But understanding why it was happening took time. And now I know — in-memory storage and multiple workers don't mix.
+
+The second one was the LLM output problem.
+I assumed — naively — that if I ask GPT to return SQL, it just returns SQL. Clean. Ready to run.
+It doesn't.
+Sometimes it returns this —
+Sure! Here is the SQL query for you:
+```sql
+SELECT * FROM customers LIMIT 5
+
+```
+And when you try to execute that string directly against MySQL — it crashes immediately.
+
+So I had to build a cleaning step — strip the markdown fences, strip any explanation text the model adds before or after. Then I realized even after cleaning, sometimes the model would **invent column names** that don't exist in the table. So I started passing the actual schema — column names and types — into the prompt, plus 3 real sample rows, so the model has no excuse to guess.
+
+That combination — schema plus sample rows plus explicit instructions to return raw SQL only — made it reliable enough to actually run in production."
+
