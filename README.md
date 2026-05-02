@@ -101,7 +101,7 @@ It doesn't.
 Sometimes it returns this —
 Sure! Here is the SQL query for you:
 ```sql
-SELECT * FROM customers LIMIT 5
+'''SELECT * FROM customers LIMIT 5
 
 ```
 And when you try to execute that string directly against MySQL — it crashes immediately.
